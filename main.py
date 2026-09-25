@@ -10,7 +10,8 @@ app = Flask(__name__)
 
 # ==================== CONFIGURATION & SECRETS ====================
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 # =================================================================
 
 # Initialize Clients
@@ -91,33 +92,36 @@ def process_with_ai(raw_text):
         print(f"AI API Error: {e}, output: {result_text}", flush=True)
         return None
 
-def send_ntfy_trigger(payload):
-    body = json.dumps(payload, ensure_ascii=False)
-    url = f"https://ntfy.sh/{NTFY_TOPIC}"
+def send_telegram_message(payload):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    message_text = json.dumps(payload, ensure_ascii=False, indent=2)
 
-    print(f"[NTFY] About to POST to: {url}", flush=True)
-    print(f"[NTFY] Payload: {payload}", flush=True)
-    print(f"[NTFY] Body size: {len(body)} bytes", flush=True)
+    print(f"[TELEGRAM] About to POST to: {url}", flush=True)
+    print(f"[TELEGRAM] Payload: {payload}", flush=True)
+
+    data = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message_text
+    }
 
     try:
-        print(f"[NTFY] Sending POST request...", flush=True)
-        response = requests.post(url, data=body.encode('utf-8'), timeout=10)
+        print(f"[TELEGRAM] Sending POST request...", flush=True)
+        response = requests.post(url, json=data, timeout=10)
 
-        print(f"[NTFY] Response status code: {response.status_code}", flush=True)
-        print(f"[NTFY] Response headers: {dict(response.headers)}", flush=True)
-        print(f"[NTFY] Response body: {response.text}", flush=True)
+        print(f"[TELEGRAM] Response status code: {response.status_code}", flush=True)
+        print(f"[TELEGRAM] Response body: {response.text}", flush=True)
 
         if response.status_code == 200:
-            print(f"[NTFY] Success! Message dispatched", flush=True)
+            print(f"[TELEGRAM] Success! Message dispatched", flush=True)
             return True
         else:
-            print(f"[NTFY] Warning: Status code {response.status_code} (expected 200)", flush=True)
+            print(f"[TELEGRAM] Warning: Status code {response.status_code} (expected 200)", flush=True)
             return False
 
     except Exception as e:
-        print(f"[NTFY] Exception occurred: {e}", flush=True)
+        print(f"[TELEGRAM] Exception occurred: {e}", flush=True)
         import traceback
-        print(f"[NTFY] Traceback: {traceback.format_exc()}", flush=True)
+        print(f"[TELEGRAM] Traceback: {traceback.format_exc()}", flush=True)
         return None
 
 @app.route("/", methods=["POST"])
@@ -135,9 +139,9 @@ def webhook():
         # 1. Process the raw text through Claude
         structured_data = process_with_ai(incoming_text)
 
-        # 2. If successful, trigger the iPhone via email
+        # 2. If successful, send message to Telegram
         if structured_data:
-            send_ntfy_trigger(structured_data)
+            send_telegram_message(structured_data)
             return jsonify({"status": "success", "data": structured_data}), 200
         else:
             return jsonify({"status": "error", "message": "AI parsing failed"}), 500
